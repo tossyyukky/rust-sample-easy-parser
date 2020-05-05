@@ -1,5 +1,32 @@
+use std::io;
+
+fn prompt(s: &str) -> io::Result<()> {
+    use std::io::{stdout, Write};
+    let stdout = stdout();
+    let mut stdout = stdout.lock();
+    stdout.write(s.as_bytes());
+    stdout.flush()
+}
 fn main() {
-    println!("Hello, world!");
+    // println!("Hello, world!");
+    use std::io::{stdin, BufRead, BufReader};
+
+    let stdin = stdin();
+    let stdin = stdin.lock();
+    let stdin = BufReader::new(stdin);
+    let mut lines = stdin.lines();
+
+    loop {
+        prompt("> ").unwrap();
+        // ユーザの入力を取得する
+        if let Some(Ok(line)) = lines.next() {
+            // 字句解析を行う
+            let token = lex(&line);
+            println!("{:?}", token);
+        } else {
+            break;
+        }
+    }
 }
 
 /// 位置情報
@@ -122,7 +149,7 @@ fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // ここでそれぞれの関数にinputとposを渡す
         match input[pos] {
             // 遷移図通りの実装
-            b'0'...b'9' => lex_a_token!(lex_number(input, pos)),
+            b'0'..=b'9' => lex_a_token!(lex_number(input, pos)),
             b'+' => lex_a_token!(lex_plus(input, pos)),
             b'-' => lex_a_token!(lex_minus(input, pos)),
             b'*' => lex_a_token!(lex_asterisk(input, pos)),
@@ -187,12 +214,12 @@ fn lex_rparen(input: &[u8], start: usize) -> Result<(Token, usize), LexError> {
 }
 
 // 数字の処理
-fn lex_number(input: &[u8], mut pos: usize) -> (Token, usize) {
+fn lex_number(input: &[u8], pos: usize) -> Result<(Token, usize), LexError> {
     use std::str::from_utf8;
 
     let start = pos;
     // recognize_manyを使って数値を読み込む
-    let end = recognize_many(input, start, |b| b"123456789".contains(&b));
+    let end = recognize_many(input, start, |b| b"1234567890".contains(&b));
 
     // 数字の列を数値に変換する
     let n = from_utf8(&input[start..end])
@@ -201,15 +228,15 @@ fn lex_number(input: &[u8], mut pos: usize) -> (Token, usize) {
         .parse()
         // 同じく構成からparseは常に成功する
         .unwrap();
-    (Token::number(n, Loc(start, end)), end)
+    Ok((Token::number(n, Loc(start, end)), end))
 }
 
 // 空白の処理
-fn skip_spaces(input: &[u8], mut pos: usize) -> ((), usize) {
+fn skip_spaces(input: &[u8], pos: usize) -> Result<((), usize), LexError> {
     // recognize_manyを使って空白を飛ばす
-    let end = recognize_many(input, pos, |b| b" \n\t".contains(&b));
+    let pos = recognize_many(input, pos, |b| b" \n\t".contains(&b));
     // そのまま空白を無視する
-    ((), pos)
+    Ok(((), pos))
 }
 
 // 共通化
@@ -218,4 +245,21 @@ fn recognize_many(input: &[u8], mut pos: usize, mut f: impl FnMut(u8) -> bool) -
         pos += 1
     }
     pos
+}
+
+#[test]
+fn test_lexer() {
+    assert_eq!(
+        lex("1 + 2 * 3 - -10"),
+        Ok(vec![
+            Token::number(1, Loc(0, 1)),
+            Token::plus(Loc(2, 3)),
+            Token::number(2, Loc(4, 5)),
+            Token::asterisk(Loc(6, 7)),
+            Token::number(3, Loc(8, 9)),
+            Token::minus(Loc(10, 11)),
+            Token::minus(Loc(12, 13)),
+            Token::number(10, Loc(13, 15)),
+        ])
+    );
 }
