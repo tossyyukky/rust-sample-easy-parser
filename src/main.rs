@@ -12,6 +12,8 @@ fn prompt(s: &str) -> io::Result<()> {
 fn main() {
     // println!("Hello, world!");
     use std::io::{stdin, BufRead, BufReader};
+    // インタプリタを用意しておく
+    let mut interp = Interperter::new();
 
     let stdin = stdin();
     let stdin = stdin.lock();
@@ -48,7 +50,16 @@ fn main() {
                     continue;
                 }
             };
-            println!("{:?}", ast);
+            // インタプリタでevalする
+            let n = match interp.eval(&ast) {
+                Ok(n) => n,
+                Err(e) => {
+                    e.show_diagnostic(&line);
+                    show_trace(e);
+                    continue;
+                }
+            };
+            println!("{:?}", n);
         } else {
             break;
         }
@@ -683,6 +694,104 @@ fn show_trace<E: StdError>(e: E) {
         source = e.source()
     }
     // エラー表示のあとは次の入力を受け付ける
+}
+
+// 9−4−1 評価器の作成
+/// 評価器を表すデータ型
+struct Interperter;
+
+impl Interperter {
+    pub fn new() -> Self {
+        Interperter
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum InterperterErrorKind {
+    DivisionByZero,
+}
+
+type InterperterError = Annot<InterperterErrorKind>;
+
+impl StdError for InterperterError {}
+
+impl InterperterError {
+    /// 診断メッセージを表示する
+    fn show_diagnostic(&self, input: &str) {
+        // use self::Error::*;
+        // use self::ParseError as P;
+        // エラー情報とその位置情報を取り出す。エラーの種類によって位置情報を調整する。
+        // let (e, loc): (&StdError, Loc) = match self {
+        // Lexer(e) => (e, e.loc.clone()),
+        // Parser(e) => {
+        // let loc = match e {
+        //     P::UnexpectedToken(Token { loc, .. })
+        //     | P::NotExpression(Token { loc, .. })
+        //     | P::NotOperator(Token { loc, .. })
+        //     | P::UnclosedOpenParen(Token { loc, .. }) => loc.clone(),
+        //     // redundant expressionはトークン以降行末までが余りなのでlocの終了位置を調整する
+        //     P::RedundantExpression(Token { loc, .. }) => Loc(loc.0, input.len()),
+        //     // EoFはloc情報を持っていないのでその場で作る
+        //     P::Eof => Loc(input.len(), input.len() + 1),
+        // };
+        // (e, loc)
+        // }
+        // };
+        // エラー情報をかんたんに表示し
+        // eprintln!("{}", e);
+        // エラー位置を指示する
+        // print_annot(input, loc);
+    }
+}
+impl fmt::Display for InterperterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "division by zero")
+    }
+}
+
+impl Interperter {
+    pub fn eval(&mut self, expr: &Ast) -> Result<i64, InterperterError> {
+        use self::AstKind::*;
+        match expr.value {
+            Num(n) => Ok(n as i64),
+            UniOp { ref op, ref e } => {
+                let e = self.eval(e)?;
+                Ok(self.eval_uniop(op, e))
+            }
+            BinOp {
+                ref op,
+                ref l,
+                ref r,
+            } => {
+                let l = self.eval(l)?;
+                let r = self.eval(r)?;
+                self.eval_binop(op, l, r)
+                    .map_err(|e| InterperterError::new(e, expr.loc.clone()))
+            }
+        }
+    }
+    fn eval_uniop(&mut self, op: &UniOp, n: i64) -> i64 {
+        use self::UniOpKind::*;
+        match op.value {
+            Plus => n,
+            Minus => -n,
+        }
+    }
+    fn eval_binop(&mut self, op: &BinOp, l: i64, r: i64) -> Result<i64, InterperterErrorKind> {
+        use self::BinOpKind::*;
+        match op.value {
+            Add => Ok(l + r),
+            Sub => Ok(l - r),
+            Mult => Ok(l * r),
+            Div => {
+                if r == 0 {
+                    Err(InterperterErrorKind::DivisionByZero)
+                } else {
+                    Ok(l / r)
+                }
+            }
+        }
+    }
 }
 
 #[test]
