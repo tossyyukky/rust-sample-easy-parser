@@ -31,14 +31,20 @@ fn main() {
                 Err(e) => {
                     // ここでエラー処理をする
                     // unimplemented!()
-                    eprintln!("{}", e);
-                    let mut source = e.source();
-                    // sourceを全てたどって表示する
-                    while let Some(e) = source {
-                        eprintln!("caused by {}", e);
-                        source = e.source()
-                    }
-                    // エラー表示のあとは次の入力を受け付ける
+
+                    // ↓エラー表示最適化前のコード
+                    // eprintln!("{}", e);
+                    // let mut source = e.source();
+                    // // sourceを全てたどって表示する
+                    // while let Some(e) = source {
+                    //     eprintln!("caused by {}", e);
+                    //     source = e.source()
+                    // }
+                    // // エラー表示のあとは次の入力を受け付ける
+                    // continue;
+
+                    e.show_diagnostic(&line);
+                    show_trace(e);
                     continue;
                 }
             };
@@ -628,6 +634,55 @@ impl StdError for Error {
             Parser(parse) => Some(parse),
         }
     }
+}
+
+/// inputに対してlocの位置を強調表示する
+fn print_annot(input: &str, loc: Loc) {
+    // 入力に対して
+    eprintln!("{}", input);
+    // 位置情報をわかりやすく示す
+    eprintln!("{}{}", " ".repeat(loc.0), "^".repeat(loc.1 - loc.0));
+}
+
+impl Error {
+    /// 診断メッセージを表示する
+    fn show_diagnostic(&self, input: &str) {
+        use self::Error::*;
+        use self::ParseError as P;
+        // エラー情報とその位置情報を取り出す。エラーの種類によって位置情報を調整する。
+        let (e, loc): (&StdError, Loc) = match self {
+            Lexer(e) => (e, e.loc.clone()),
+            Parser(e) => {
+                let loc = match e {
+                    P::UnexpectedToken(Token { loc, .. })
+                    | P::NotExpression(Token { loc, .. })
+                    | P::NotOperator(Token { loc, .. })
+                    | P::UnclosedOpenParen(Token { loc, .. }) => loc.clone(),
+                    // redundant expressionはトークン以降行末までが余りなのでlocの終了位置を調整する
+                    P::RedundantExpression(Token { loc, .. }) => Loc(loc.0, input.len()),
+                    // EoFはloc情報を持っていないのでその場で作る
+                    P::Eof => Loc(input.len(), input.len() + 1),
+                };
+                (e, loc)
+            }
+        };
+        // エラー情報をかんたんに表示し
+        eprintln!("{}", e);
+        // エラー位置を指示する
+        print_annot(input, loc);
+    }
+}
+
+fn show_trace<E: StdError>(e: E) {
+    // エラーがあった場合そのエラーとsourceを全部出力する
+    eprintln!("{}", e);
+    let mut source = e.source();
+    // sourceをすべてたどって表示する
+    while let Some(e) = source {
+        eprintln!("caused by {}", e);
+        source = e.source()
+    }
+    // エラー表示のあとは次の入力を受け付ける
 }
 
 #[test]
