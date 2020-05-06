@@ -12,8 +12,11 @@ fn prompt(s: &str) -> io::Result<()> {
 fn main() {
     // println!("Hello, world!");
     use std::io::{stdin, BufRead, BufReader};
-    // インタプリタを用意しておく
-    let mut interp = Interperter::new();
+    // 9-4-1 インタプリタを用意しておく
+    // let mut interp = Interperter::new();
+
+    // 9-4-2 コンパイラ
+    let mut compiler = RpnCompiler::new();
 
     let stdin = stdin();
     let stdin = stdin.lock();
@@ -50,16 +53,20 @@ fn main() {
                     continue;
                 }
             };
-            // インタプリタでevalする
-            let n = match interp.eval(&ast) {
-                Ok(n) => n,
-                Err(e) => {
-                    e.show_diagnostic(&line);
-                    show_trace(e);
-                    continue;
-                }
-            };
-            println!("{:?}", n);
+            // 9-4-1 インタプリタでevalする
+            // let n = match interp.eval(&ast) {
+            //     Ok(n) => n,
+            //     Err(e) => {
+            //         e.show_diagnostic(&line);
+            //         show_trace(e);
+            //         continue;
+            //     }
+            // };
+            // println!("{:?}", n);
+
+            // 9-4-2 インタプリタの代わりにコンパイラを呼ぶ
+            let rpn = compiler.compile(&ast);
+            println!("{}", rpn);
         } else {
             break;
         }
@@ -790,6 +797,66 @@ impl Interperter {
                     Ok(l / r)
                 }
             }
+        }
+    }
+}
+
+// 9-4-2 コンパイラ
+
+/// 逆ポーランド記法へのコンパイラを表すデータ型
+struct RpnCompiler;
+
+impl RpnCompiler {
+    pub fn new() -> Self {
+        RpnCompiler
+    }
+
+    pub fn compile(&mut self, expr: &Ast) -> String {
+        let mut buf = String::new();
+        self.compile_inner(expr, &mut buf);
+        buf
+    }
+
+    pub fn compile_inner(&mut self, expr: &Ast, buf: &mut String) {
+        use self::AstKind::*;
+        // ここ、本だと *expr だったけどこうしないとコンパイル通らない・・・これも誤植かなぁ
+        match expr.value {
+            Num(n) => buf.push_str(&n.to_string()),
+            UniOp { ref op, ref e } => {
+                self.compile_uniop(op, buf);
+                self.compile_inner(e, buf)
+            }
+            BinOp {
+                ref op,
+                ref l,
+                ref r,
+            } => {
+                self.compile_inner(l, buf);
+                buf.push_str(" ");
+                self.compile_inner(r, buf);
+                buf.push_str(" ");
+                self.compile_binop(op, buf)
+            }
+        }
+    }
+
+    fn compile_uniop(&mut self, op: &UniOp, buf: &mut String) {
+        use self::UniOpKind::*;
+        // ここ、本だと *op だったけどこうしないとコンパイル通らない・・・これも誤植かなぁ
+        match op.value {
+            Plus => buf.push_str("+"),
+            Minus => buf.push_str("-"),
+        }
+    }
+
+    fn compile_binop(&mut self, op: &BinOp, buf: &mut String) {
+        use self::BinOpKind::*;
+        // ここ、本だと *op だったけどこうしないとコンパイル通らない・・・これも誤植かなぁ
+        match op.value {
+            Add => buf.push_str("+"),
+            Sub => buf.push_str("-"),
+            Mult => buf.push_str("*"),
+            Div => buf.push_str("/"),
         }
     }
 }
